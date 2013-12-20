@@ -4,7 +4,7 @@
 
 mod NBT {
     use std::io::Reader;
-
+    
     #[deriving(Eq, ToStr, FromPrimitive)]
     pub enum TagType {
         TAG_End = 0,
@@ -21,218 +21,131 @@ mod NBT {
         TAG_Unknown
     }
 
-    trait TagName {
-        fn build(r: &mut Reader) -> Self;
+    pub enum NBTTag {
+        ByteTag(i8),
+        ShortTag(i16),
+        IntTag(i32),
+        LongTag(i64),
+        FloatTag(f32),
+        DoubleTag(f64),
+        ByteArrayTag(~[u8]),
+        StringTag(~str),
+        ListTag(TagType, uint, ~[~NBTTag]),
+        CompoundTag(~[~NamedTag])
     }
-    impl TagName for ~str {
-        fn build(r: &mut Reader) -> ~str { 
-            let len = r.read_be_u16() as uint;
-            ::std::str::from_utf8_owned(r.read_bytes(len))
+    
+    impl NBTTag {
+        fn get_type(&self) -> TagType {
+            match *self {
+                ByteTag(_) => TAG_Byte,
+                ShortTag(_) => TAG_Short,
+                IntTag(_) => TAG_Int,
+                LongTag(_) => TAG_Long,
+                FloatTag(_) => TAG_Float,
+                DoubleTag(_) => TAG_Double,
+                ByteArrayTag(_) =>TAG_Byte_Array,
+                StringTag(_) => TAG_String,
+                ListTag(_, _, _) => TAG_List,
+                CompoundTag(_) => TAG_Compound
             }
-    }
-    impl TagName for () {
-        fn build(r: &mut Reader) {}
-    }
-
-    pub trait Tag<T: TagName> {
-        fn get_type(&self) -> TagType;
-    }
-
-    pub trait NamedTag<'a> : Tag<~str> {
-        fn get_name(&'a self) -> &'a ~str;
-        fn build(r: &mut Reader) -> ~Self;
-    }
-    pub trait UnnamedTag : Tag<()> {
-        fn build(r: &mut Reader) -> ~Self;
-    }
-
-
-    struct StringTag {
-        _value: ~str,
-        _name: ~str
-    }
-    impl<'a> NamedTag<'a> for StringTag {
-        fn get_name(&'a self) -> &'a ~str { &'a self._name }
-        fn build(r: &mut Reader) -> ~StringTag {
-            let name: ~str = TagName::build(r);
-            let len = r.read_be_u16() as uint;
-            let value = ::std::str::from_utf8_owned(r.read_bytes(len));
-            ~StringTag{_value: value, _name: name}
-        }
-    }
-    impl<T: TagName> Tag<T> for StringTag { fn get_type(&self) -> TagType { TAG_String } }
-    impl UnnamedTag for StringTag {
-        fn build(r: &mut ::std::io::Reader) -> ~StringTag {
-            let len = r.read_be_u16() as uint;
-            let value = ::std::str::from_utf8_owned(r.read_bytes(len));
-            ~StringTag{_value: value, _name: ~""}
         }
     }
 
-    struct ByteTag { _value: i8, _name: ~str }
-    impl<'a> NamedTag<'a> for ByteTag {
-        fn get_name(&'a self) -> &'a ~str { &'a self._name }
-        fn build(r: &mut Reader) -> ~ByteTag {
-            let name: ~str = TagName::build(r);
-            ~ByteTag{_value: r.read_i8(), _name: name} 
+    impl NBTTag {
+        fn build(r: &mut Reader, tt: TagType) -> NBTTag {
+            match tt {
+                TAG_End => fail!("Cannot build a TAG_End"),
+                TAG_Byte => ByteTag(r.read_i8()),
+                TAG_Short => ShortTag(r.read_be_i16()),
+                TAG_Int => IntTag(r.read_be_i32()),
+                TAG_Long => LongTag(r.read_be_i64()),
+                TAG_Float => FloatTag(r.read_be_f32()),
+                TAG_Double => DoubleTag(r.read_be_f64()),
+                TAG_String => {
+                    let len = r.read_be_u16() as uint;
+                    let name: ~str = ::std::str::from_utf8_owned(r.read_bytes(len));
+                    StringTag(name)
+                },
+                TAG_List => {
+                    let tt: TagType = FromPrimitive::from_u8(r.read_u8()).unwrap();
+                    let num_elems :uint = r.read_be_u32() as uint;
+                    let mut elems: ~[~NBTTag] = ::std::vec::with_capacity(num_elems);
+                    let mut counter: uint = 0;
+                    while counter < num_elems {
+                        elems.push(box NBTTag::build(r, tt));
+                        counter += 1;
+                    }
+                    ListTag(tt, num_elems, elems)
+                },
+                TAG_Compound => {
+                    let mut elems: ~[~NamedTag] = ::std::vec::with_capacity(5);
+                    loop {
+                        let tt: TagType = FromPrimitive::from_u8(r.read_u8()).unwrap();
+                        if tt == TAG_End { break; }
+                        let len = r.read_be_u16() as uint;
+                        let name: ~str = ::std::str::from_utf8_owned(r.read_bytes(len));
+                        elems.push(box NamedTag{_name: name, _value: NBTTag::build(r, tt)});
+                    }
+                    CompoundTag(elems)
+                }
+                _ => fail!("Unknown tag {:s}", tt.to_str())
+            }
+            
         }
-    }
-    impl<T: TagName> Tag<T> for ByteTag { fn get_type(&self) -> TagType { TAG_Byte } }
-    impl UnnamedTag for ByteTag {
-        fn build(r: &mut Reader) -> ~ByteTag {
-            ~ByteTag{_value: r.read_i8(), _name: ~""} 
+        fn _pretty_print(&self, name: Option<&str>, indent: uint) -> ~str {
+            let indent_vec: ~[char] = ::std::vec::from_elem(indent, ' ');
+            let indent_str = ::std::str::from_chars(indent_vec);
+            let mut s: ~str = ~"";
+            let name_str = match name {
+                None => ~"",
+                Some(s) => format!("(\"{}\")", s)
+            };
+            s.push_str(indent_str);
+            s.push_str(match *self {
+                ByteTag(v) => format!("TAG_Byte{}: {}", name_str, v.to_str()),
+                ShortTag(v) => format!("TAG_Short{}: {}", name_str, v.to_str()),
+                IntTag(v) => format!("TAG_Int{}: {}", name_str, v.to_str()),
+                LongTag(v) => format!("TAG_Long{}: {}", name_str, v.to_str()),
+                FloatTag(v) => format!("TAG_Float{}: {}", name_str, v.to_str()),
+                DoubleTag(v) => format!("TAG_Double{}: {}", name_str, v.to_str()),
+                StringTag(ref v) => format!("TAG_String{}: {}", name_str, v.to_str()),
+                ListTag(tt, len, ref vs) => {
+                    let mut r = format!("TAG_List{}: {} entries of type {}\n", name_str, len, tt.to_str() );
+                    r.push_str(format!("{}\\{\n", indent_str));
+                    for v in vs.iter() {
+                        r.push_str(v._pretty_print(None, indent+4));
+                        r.push_str("\n");
+                    }
+                    r.push_str(format!("{}\\}", indent_str));
+
+                    r
+                }
+                CompoundTag(ref vs) => {
+                    let mut r = format!("TAG_Compound{}: {} entries\n", name_str, vs.len());
+                    r.push_str(format!("{}\\{\n", indent_str));
+                    for v in vs.iter() {
+                        r.push_str(v._pretty_print(indent+4));
+                        r.push_str("\n");
+                    }
+                    r.push_str(format!("{}\\}", indent_str));
+
+                    r
+                },
+                _ => box "unknown"
+            });
+            s
         }
     }
 
-    struct LongTag { _value: i64, _name: ~str }
-    impl<'a> NamedTag<'a> for LongTag {
-        fn get_name(&'a self) -> &'a ~str { &'a self._name }
-        fn build(r: &mut Reader) -> ~LongTag {
-            let name: ~str = TagName::build(r);
-            let mut me : ~LongTag = UnnamedTag::build(r);
-            me._name = name; me
-        }
-    }
-    impl<T: TagName> Tag<T> for LongTag { fn get_type(&self) -> TagType { TAG_Long } }
-    impl UnnamedTag for LongTag {
-        fn build(r: &mut Reader) -> ~LongTag { ~LongTag{_value: r.read_be_i64(), _name: ~""} }
-    }
-    
-    struct IntTag { _value: i32, _name: ~str }
-    impl<'a> NamedTag<'a> for IntTag {
-        fn get_name(&'a self) -> &'a ~str { &'a self._name }
-        fn build(r: &mut Reader) -> ~IntTag {
-            let name: ~str = TagName::build(r);
-            let mut me : ~IntTag = UnnamedTag::build(r);
-            me._name = name; me
-        }
-    }
-    impl<T: TagName> Tag<T> for IntTag { fn get_type(&self) -> TagType { TAG_Int } }
-    impl UnnamedTag for IntTag {
-        fn build(r: &mut Reader) -> ~IntTag { ~IntTag{_value: r.read_be_i32(), _name: ~""} }
-    }
-    
-    struct ShortTag { _value: i16, _name: ~str }
-    impl<'a> NamedTag<'a> for ShortTag {
-        fn get_name(&'a self) -> &'a ~str { &'a self._name }
-        fn build(r: &mut Reader) -> ~ShortTag {
-            let name: ~str = TagName::build(r);
-            let mut me : ~ShortTag = UnnamedTag::build(r);
-            me._name = name; me
-        }
-    }
-    impl<T: TagName> Tag<T> for ShortTag { fn get_type(&self) -> TagType { TAG_Short } }
-    impl UnnamedTag for ShortTag {
-        fn build(r: &mut Reader) -> ~ShortTag { ~ShortTag{_value: r.read_be_i16(), _name: ~""} }
-    }
-    
-    struct DoubleTag { _value: f64, _name: ~str }
-    impl<'a> NamedTag<'a> for DoubleTag {
-        fn get_name(&'a self) -> &'a ~str { &'a self._name }
-        fn build(r: &mut Reader) -> ~DoubleTag {
-            let name: ~str = TagName::build(r);
-            let mut me : ~DoubleTag = UnnamedTag::build(r);
-            me._name = name; me
-        }
-    }
-    impl<T: TagName> Tag<T> for DoubleTag { fn get_type(&self) -> TagType { TAG_Double } }
-    impl UnnamedTag for DoubleTag {
-        fn build(r: &mut Reader) -> ~DoubleTag { ~DoubleTag{_value: r.read_be_f64(), _name: ~""} }
-    }
-    
-    struct FloatTag { _value: f32, _name: ~str }
-    impl<'a> NamedTag<'a> for FloatTag {
-        fn get_name(&'a self) -> &'a ~str { &'a self._name }
-        fn build(r: &mut Reader) -> ~FloatTag {
-            let name: ~str = TagName::build(r);
-            let mut me : ~FloatTag = UnnamedTag::build(r);
-            me._name = name; me
-        }
-    }
-    impl<T: TagName> Tag<T> for FloatTag { fn get_type(&self) -> TagType { TAG_Float } }
-    impl UnnamedTag for FloatTag {
-        fn build(r: &mut Reader) -> ~FloatTag { ~FloatTag{_value: r.read_be_f32(), _name: ~""} }
-    }
-
-    struct ListTag {
+    pub struct NamedTag {
         _name: ~str,
-        _type: TagType,
-        _values: ~[~UnnamedTag]
+        _value: NBTTag
     }
-    impl<'a> NamedTag<'a> for ListTag {
-        fn get_name(&'a self) -> &'a ~str {&'a self._name}
-        fn build(r: &mut Reader) -> ~ListTag {
-            let name: ~str = TagName::build(r);
-            let mut me : ~ListTag = UnnamedTag::build(r);
-            me._name = name; me
-        }
+    impl NamedTag {
+        pub fn get_type(&self) -> TagType { self._value.get_type() }
+        pub fn pretty_print(&self) -> ~str { self._pretty_print(0) }
+        fn _pretty_print(&self, indent: uint) -> ~str { self._value._pretty_print(Some(self._name.as_slice()), indent) }
     }
-    impl<T: TagName> Tag<T> for ListTag{ fn get_type(&self) -> TagType { TAG_List } }
-    impl UnnamedTag for ListTag {
-        fn build(r: &mut Reader) -> ~ListTag {
-            let tt: TagType = FromPrimitive::from_u8(r.read_u8()).unwrap();
-            let len: uint = r.read_be_i32() as uint;
-            let mut elems : ~[~UnnamedTag] = ::std::vec::with_capacity(len);
-            let mut c = 0;
-            while c < len {
-                let element: ~UnnamedTag = match tt {
-                    TAG_Byte => {let _t: ~ByteTag = UnnamedTag::build(r); _t as ~UnnamedTag},
-                    TAG_Int => {let _t: ~IntTag = UnnamedTag::build(r); _t as ~UnnamedTag},
-                    TAG_Long => {let _t: ~LongTag = UnnamedTag::build(r); _t as ~UnnamedTag},
-                    TAG_Compound => {let _t: ~CompoundTag = UnnamedTag::build(r); _t as ~UnnamedTag},
-                    TAG_Double => { let _t : ~DoubleTag = UnnamedTag::build(r); _t as ~UnnamedTag},
-                    TAG_List => { let _t : ~ListTag = UnnamedTag::build(r); _t as ~UnnamedTag},
-                    TAG_Float => { let _t : ~FloatTag = UnnamedTag::build(r); _t as ~UnnamedTag},
-                    _ => fail!(format!("Failed to build list with unknown tag type: {}", tt.to_str()))
-                };
-                elems.push(element);
-                c += 1;
-            }
-            ~ListTag{_name: ~"", _type: tt, _values: elems}
-        
-        }
-    }
-    
-    struct CompoundTag<'a> {
-        _name: ~str,
-        _values: ~[~NamedTag<'a>]
-    }
-    impl<'a> NamedTag<'a> for CompoundTag<'a> {
-        fn get_name(&'a self) -> &'a ~str {&'a self._name}
-        fn build(r: &mut Reader) -> ~CompoundTag {
-            let name: ~str = TagName::build(r);
-            let mut me : ~CompoundTag = UnnamedTag::build(r);
-            me._name = name; me
-        }
-    }
-    impl<'a, T: TagName> Tag<T> for CompoundTag<'a> { fn get_type(&self) -> TagType { TAG_Compound } }
-    impl<'a> UnnamedTag for CompoundTag<'a> {
-        fn build(r: &mut Reader) -> ~CompoundTag {
-            let mut elems : ~[~NamedTag] = ::std::vec::with_capacity(10);
-            loop {
-                let tt: TagType = FromPrimitive::from_u8(r.read_u8()).unwrap();
-                if tt == TAG_End { break; }
-                let tag : ~NamedTag = match tt {
-                    TAG_Byte => { let _t : ~ByteTag = NamedTag::build(r); _t as ~NamedTag},
-                    TAG_String => { let _t : ~StringTag = NamedTag::build(r); _t as ~NamedTag},
-                    TAG_List => { let _t : ~ListTag = NamedTag::build(r); _t as ~NamedTag},
-                    TAG_Compound => { let _t : ~CompoundTag = NamedTag::build(r); _t as ~NamedTag}, 
-                    TAG_Long => { let _t : ~LongTag = NamedTag::build(r); _t as ~NamedTag},
-                    TAG_Int => { let _t : ~IntTag = NamedTag::build(r); _t as ~NamedTag},
-                    TAG_Double => { let _t : ~DoubleTag = NamedTag::build(r); _t as ~NamedTag},
-                    TAG_Float => { let _t : ~FloatTag = NamedTag::build(r); _t as ~NamedTag},
-                    TAG_Short => { let _t : ~ShortTag = NamedTag::build(r); _t as ~NamedTag},
-                    _ => fail!(format!("Unknown tag type in compount_tag::build() -- {}", tt.to_str()))
-                };
-                elems.push(tag);
-            }
-            ~CompoundTag{_name: ~"",  _values: elems}
-        
-        }
-    }
-
-
-
 
     pub struct Parser {
         _reader: ~Reader,
@@ -242,48 +155,44 @@ mod NBT {
             Parser{_reader: p}
         }
 
+        fn read_name(&mut self) -> ~str {
+            // read short to get name length;
+            let len = self._reader.read_be_u16() as uint;
+            ::std::str::from_utf8_owned(self._reader.read_bytes(len))
+        }
+
         pub fn parse(&mut self) -> ~NamedTag {
             let tt: TagType = FromPrimitive::from_u8(self._reader.read_u8()).unwrap();
-            let tag : ~NamedTag = match tt {
-                TAG_Byte => { let _t : ~ByteTag = NamedTag::build(self._reader); _t as ~NamedTag},
-                TAG_String => { let _t : ~StringTag = NamedTag::build(self._reader); _t as ~NamedTag},
-                TAG_List => { let _t : ~ListTag = NamedTag::build(self._reader); _t as ~NamedTag},
-                TAG_Compound => { let _t : ~CompoundTag = NamedTag::build(self._reader); _t as ~NamedTag}, 
-                TAG_Long => { let _t : ~LongTag = NamedTag::build(self._reader); _t as ~NamedTag},
-                TAG_Int => { let _t : ~IntTag = NamedTag::build(self._reader); _t as ~NamedTag},
-                _ => fail!(format!("Unknown tag type in parse() -- {}", tt.to_str()))
-            };
-
-            return tag;
-            // We are expecting at the first tag to be a compound tag
-            //let t : CompoundTag::build(self._reader);
-            //self._parse(TAG_Unknown, true) 
+            if tt != TAG_Compound { fail!("Expected a TAG_Compound for first tag in NBT file"); }
+            let name = self.read_name();
+            let tag : NBTTag = NBTTag::build(self._reader, TAG_Compound);
+            box NamedTag { _name: name, _value: tag}
         }
     }
-   
-}
-
-#[test]
-fn test_byte() {
-    let data: ~str = ~"\x01\x00\x04test4";
-    let bytes = ~std::io::mem::MemReader::new(data.into_bytes());
-    let mut parser = NBT::Parser::new(bytes as ~Reader);
-    let root: ~NBT::NamedTag = parser.parse();
-    assert!(root.get_type() == NBT::TAG_Byte);
-    //let s = root.get_name();
-    //assert!(root.get_name() == ~"test");
 
 }
 
+
+//#[test]
+//fn test_byte() {
+//    let data: ~str = ~"\x01\x00\x04test\x01";
+//    let bytes = ~std::io::mem::MemReader::new(data.into_bytes());
+//    let mut parser = NBT::Parser::new(bytes as ~Reader);
+//    let root: ~NBT::NamedTag = parser.parse();
+//    //assert!(root.get_type() == NBT::TAG_Byte);
+//    //let s = root.get_name();
+//    //assert!(root.get_name() == ~"test");
+//}
+
+
 #[test]
-fn test1() {
+fn test_e_dat() {
     let levelp = std::path::Path::new("e.dat");
     let level: std::io::File = std::io::File::open(&levelp).unwrap();
-    //let bytes: ~[u8] = level.read_to_end();
-    //let iter = ~bytes.move_iter();
 
     let mut parser = NBT::Parser::new(~level as ~Reader);
-    parser.parse();
+    let root: ~NBT::NamedTag = parser.parse();
+    assert!(root.get_type() == NBT::TAG_Compound);
     //let n: &u8 = iter.next().unwrap();
     //println(format!("byte 1 is {}\n", n.to_str()));
 
@@ -291,4 +200,15 @@ fn test1() {
     //let l: uint = bytes.len();
     //println(format!("byte 1 is {}\n", bytes[0]));
 
+}
+
+#[test]
+fn test_print_e_data() {
+    let levelp = std::path::Path::new("e.dat");
+    let level: std::io::File = std::io::File::open(&levelp).unwrap();
+
+    let mut parser = NBT::Parser::new(~level as ~Reader);
+    let root: ~NBT::NamedTag = parser.parse();
+    assert!(root.get_type() == NBT::TAG_Compound);
+    println(root.pretty_print());
 }
