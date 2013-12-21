@@ -61,6 +61,11 @@ mod NBT {
                 TAG_Long => LongTag(r.read_be_i64()),
                 TAG_Float => FloatTag(r.read_be_f32()),
                 TAG_Double => DoubleTag(r.read_be_f64()),
+                TAG_Byte_Array => {
+                    let len = r.read_be_u32() as uint;
+                    let bytes = r.read_bytes(len);
+                    ByteArrayTag(bytes)
+                },
                 TAG_String => {
                     let len = r.read_be_u16() as uint;
                     let name: ~str = ::std::str::from_utf8_owned(r.read_bytes(len));
@@ -109,6 +114,7 @@ mod NBT {
                 FloatTag(v) => format!("TAG_Float{}: {}", name_str, v.to_str()),
                 DoubleTag(v) => format!("TAG_Double{}: {}", name_str, v.to_str()),
                 StringTag(ref v) => format!("TAG_String{}: {}", name_str, v.to_str()),
+                ByteArrayTag(ref v) => format!("TAG_ByteArray{}: {}", name_str, v.to_str()),
                 ListTag(tt, len, ref vs) => {
                     let mut r = format!("TAG_List{}: {} entries of type {}\n", name_str, len, tt.to_str() );
                     r.push_str(format!("{}\\{\n", indent_str));
@@ -130,8 +136,7 @@ mod NBT {
                     r.push_str(format!("{}\\}", indent_str));
 
                     r
-                },
-                _ => box "unknown"
+                }
             });
             s
         }
@@ -141,8 +146,10 @@ mod NBT {
         _name: ~str,
         _value: NBTTag
     }
-    impl NamedTag {
+    impl<'a> NamedTag {
         pub fn get_type(&self) -> TagType { self._value.get_type() }
+        pub fn get_name(&'a self) -> &'a str { self._name.as_slice() }
+        pub fn get_tag(&'a self) -> &'a NBTTag { &self._value }
         pub fn pretty_print(&self) -> ~str { self._pretty_print(0) }
         fn _pretty_print(&self, indent: uint) -> ~str { self._value._pretty_print(Some(self._name.as_slice()), indent) }
     }
@@ -173,16 +180,132 @@ mod NBT {
 }
 
 
-//#[test]
-//fn test_byte() {
-//    let data: ~str = ~"\x01\x00\x04test\x01";
-//    let bytes = ~std::io::mem::MemReader::new(data.into_bytes());
-//    let mut parser = NBT::Parser::new(bytes as ~Reader);
-//    let root: ~NBT::NamedTag = parser.parse();
-//    //assert!(root.get_type() == NBT::TAG_Byte);
-//    //let s = root.get_name();
-//    //assert!(root.get_name() == ~"test");
-//}
+#[test]
+fn test_byte() {
+    let data: ~str = ~"\x0a\x00\x04abcd\x01\x00\x04test\x01\x00";
+    let bytes = ~std::io::mem::MemReader::new(data.into_bytes());
+    let mut parser = NBT::Parser::new(bytes as ~Reader);
+    let root: ~NBT::NamedTag = parser.parse();
+    assert!(root.get_name() == "abcd");
+    match *root.get_tag() {
+        NBT::CompoundTag(ref vs) => {
+            assert!(vs.len() == 1);
+            let sub_tag : &NBT::NamedTag = vs[0];
+            assert!(sub_tag.get_name() == "test");
+            match *sub_tag.get_tag() {
+                NBT::ByteTag(v) => { assert!(v == 1); }
+                _ => fail!("Unexpected subtag!")
+            }
+        },
+        _ => fail!("Unexpected tag type!")
+    }
+}
+
+#[test]
+fn test_short() {
+    let data: ~str = ~"\x0a\x00\x04abcd\x02\x00\x05hello\x12\x34\x00";
+    let bytes = ~std::io::mem::MemReader::new(data.into_bytes());
+    let mut parser = NBT::Parser::new(bytes as ~Reader);
+    let root: ~NBT::NamedTag = parser.parse();
+    assert!(root.get_name() == "abcd");
+    match *root.get_tag() {
+        NBT::CompoundTag(ref vs) => {
+            assert!(vs.len() == 1);
+            let sub_tag : &NBT::NamedTag = vs[0];
+            assert!(sub_tag.get_name() == "hello");
+            match *sub_tag.get_tag() {
+                NBT::ShortTag(v) => { assert!(v == 4660); }
+                _ => fail!("Unexpected subtag!")
+            }
+        },
+        _ => fail!("Unexpected tag type!")
+    }
+}
+
+#[test]
+fn test_int() {
+    let data: ~str = ~"\x0a\x00\x04abcd\x03\x00\x05world\x12\x34\x56\x78\x00";
+    let bytes = ~std::io::mem::MemReader::new(data.into_bytes());
+    let mut parser = NBT::Parser::new(bytes as ~Reader);
+    let root: ~NBT::NamedTag = parser.parse();
+    assert!(root.get_name() == "abcd");
+    match *root.get_tag() {
+        NBT::CompoundTag(ref vs) => {
+            assert!(vs.len() == 1);
+            let sub_tag : &NBT::NamedTag = vs[0];
+            assert!(sub_tag.get_name() == "world");
+            match *sub_tag.get_tag() {
+                NBT::IntTag(v) => { assert!(v == 305419896); }
+                _ => fail!("Unexpected subtag!")
+            }
+        },
+        _ => fail!("Unexpected tag type!")
+    }
+}
+
+
+#[test]
+fn test_long() {
+    let data: ~str = ~"\x0a\x00\x04abcd\x04\x00\x05world\x12\x34\x56\x78\x12\x34\x56\x78\x00";
+    let bytes = ~std::io::mem::MemReader::new(data.into_bytes());
+    let mut parser = NBT::Parser::new(bytes as ~Reader);
+    let root: ~NBT::NamedTag = parser.parse();
+    assert!(root.get_name() == "abcd");
+    match *root.get_tag() {
+        NBT::CompoundTag(ref vs) => {
+            assert!(vs.len() == 1);
+            let sub_tag : &NBT::NamedTag = vs[0];
+            assert!(sub_tag.get_name() == "world");
+            match *sub_tag.get_tag() {
+                NBT::LongTag(v) => { assert!(v == 1311768465173141112); }
+                _ => fail!("Unexpected subtag!")
+            }
+        },
+        _ => fail!("Unexpected tag type!")
+    }
+}
+
+#[test]
+fn test_bytearray() {
+    let data: ~str = ~"\x0a\x00\x04abcd\x07\x00\x05world\x00\x00\x00\x0a\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x00";
+    let bytes = ~std::io::mem::MemReader::new(data.into_bytes());
+    let mut parser = NBT::Parser::new(bytes as ~Reader);
+    let root: ~NBT::NamedTag = parser.parse();
+    assert!(root.get_name() == "abcd");
+    match *root.get_tag() {
+        NBT::CompoundTag(ref vs) => {
+            assert!(vs.len() == 1);
+            let sub_tag : &NBT::NamedTag = vs[0];
+            assert!(sub_tag.get_name() == "world");
+            match *sub_tag.get_tag() {
+                NBT::ByteArrayTag(ref v) => { assert!(*v == ~[0,1,2,3,4,5,6,7,8,9]); }
+                _ => fail!("Unexpected subtag!")
+            }
+        },
+        _ => fail!("Unexpected tag type!")
+    }
+}
+
+#[test]
+fn test_string() {
+    let data: ~str = ~"\x0a\x00\x04abcd\x08\x00\x05world\x00\x0chello world!";
+    let bytes = ~std::io::mem::MemReader::new(data.into_bytes());
+    let mut parser = NBT::Parser::new(bytes as ~Reader);
+    let root: ~NBT::NamedTag = parser.parse();
+    assert!(root.get_name() == "abcd");
+    match *root.get_tag() {
+        NBT::CompoundTag(ref vs) => {
+            assert!(vs.len() == 1);
+            let sub_tag : &NBT::NamedTag = vs[0];
+            assert!(sub_tag.get_name() == "world");
+            match *sub_tag.get_tag() {
+                NBT::StringTag(ref v) => { assert!(*v == ~"hello world!"); }
+                _ => fail!("Unexpected subtag!")
+            }
+        },
+        _ => fail!("Unexpected tag type!")
+    }
+}
 
 
 #[test]
@@ -210,5 +333,13 @@ fn test_print_e_data() {
     let mut parser = NBT::Parser::new(~level as ~Reader);
     let root: ~NBT::NamedTag = parser.parse();
     assert!(root.get_type() == NBT::TAG_Compound);
-    println(root.pretty_print());
+    let s = root.pretty_print();
+
+    // if  you actually want to see the pretty-printed tree, set the NBT_PRETTYPRINT envvar
+    let xx : std::c_str::CString = "NBT_PRETTYPRINT".to_c_str();
+    unsafe {
+        if ! std::libc::funcs::c95::stdlib::getenv(xx.unwrap()).is_null() {
+            println(s);
+        }
+    }
 }
