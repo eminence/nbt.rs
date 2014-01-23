@@ -4,7 +4,7 @@ use nbt::NBT;
 #[test]
 fn test_byte() {
     let data: ~str = ~"\x0a\x00\x04abcd\x01\x00\x04test\x01\x00";
-    let bytes = ~std::io::mem::MemReader::new(data.into_bytes());
+    let bytes = ~std::io::MemReader::new(data.into_bytes());
     let mut parser = NBT::Parser::new(bytes as ~Reader);
     let root: ~NBT::NamedTag = parser.parse();
     assert!(root.get_name() == "abcd");
@@ -25,7 +25,7 @@ fn test_byte() {
 #[test]
 fn test_short() {
     let data: ~str = ~"\x0a\x00\x04abcd\x02\x00\x05hello\x12\x34\x00";
-    let bytes = ~std::io::mem::MemReader::new(data.into_bytes());
+    let bytes = ~std::io::MemReader::new(data.into_bytes());
     let mut parser = NBT::Parser::new(bytes as ~Reader);
     let root: ~NBT::NamedTag = parser.parse();
     assert!(root.get_name() == "abcd");
@@ -46,7 +46,7 @@ fn test_short() {
 #[test]
 fn test_int() {
     let data: ~str = ~"\x0a\x00\x04abcd\x03\x00\x05world\x12\x34\x56\x78\x00";
-    let bytes = ~std::io::mem::MemReader::new(data.into_bytes());
+    let bytes = ~std::io::MemReader::new(data.into_bytes());
     let mut parser = NBT::Parser::new(bytes as ~Reader);
     let root: ~NBT::NamedTag = parser.parse();
     assert!(root.get_name() == "abcd");
@@ -68,7 +68,7 @@ fn test_int() {
 #[test]
 fn test_long() {
     let data: ~str = ~"\x0a\x00\x04abcd\x04\x00\x05world\x12\x34\x56\x78\x12\x34\x56\x78\x00";
-    let bytes = ~std::io::mem::MemReader::new(data.into_bytes());
+    let bytes = ~std::io::MemReader::new(data.into_bytes());
     let mut parser = NBT::Parser::new(bytes as ~Reader);
     let root: ~NBT::NamedTag = parser.parse();
     assert!(root.get_name() == "abcd");
@@ -89,7 +89,7 @@ fn test_long() {
 #[test]
 fn test_bytearray() {
     let data: ~str = ~"\x0a\x00\x04abcd\x07\x00\x05world\x00\x00\x00\x0a\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x00";
-    let bytes = ~std::io::mem::MemReader::new(data.into_bytes());
+    let bytes = ~std::io::MemReader::new(data.into_bytes());
     let mut parser = NBT::Parser::new(bytes as ~Reader);
     let root: ~NBT::NamedTag = parser.parse();
     assert!(root.get_name() == "abcd");
@@ -110,7 +110,7 @@ fn test_bytearray() {
 #[test]
 fn test_string() {
     let data: ~str = ~"\x0a\x00\x04abcd\x08\x00\x05world\x00\x0chello world!";
-    let bytes = ~std::io::mem::MemReader::new(data.into_bytes());
+    let bytes = ~std::io::MemReader::new(data.into_bytes());
     let mut parser = NBT::Parser::new(bytes as ~Reader);
     let root: ~NBT::NamedTag = parser.parse();
     assert!(root.get_name() == "abcd");
@@ -160,7 +160,7 @@ fn test_print_e_data() {
     let xx : std::c_str::CString = "NBT_PRETTYPRINT".to_c_str();
     unsafe {
         if ! std::libc::funcs::c95::stdlib::getenv(xx.unwrap()).is_null() {
-            println(s);
+            println!("{}", s);
         }
     }
 }
