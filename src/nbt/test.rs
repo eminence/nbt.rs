@@ -109,7 +109,7 @@ fn test_bytearray() {
 
 #[test]
 fn test_string() {
-    let data: ~str = ~"\x0a\x00\x04abcd\x08\x00\x05world\x00\x0chello world!";
+    let data: ~str = ~"\x0a\x00\x04abcd\x08\x00\x05world\x00\x0chello world!\x00";
     let bytes = ~std::io::MemReader::new(data.into_bytes());
     let mut parser = NBT::Parser::new(bytes as ~Reader);
     let root: ~NBT::NamedTag = parser.parse();
