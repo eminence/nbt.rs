@@ -1,4 +1,4 @@
-extern mod nbt;
+extern crate nbt;
 use nbt::NBT;
 
 #[test]
@@ -11,7 +11,7 @@ fn test_byte() {
     match *root.get_tag() {
         NBT::CompoundTag(ref vs) => {
             assert!(vs.len() == 1);
-            let sub_tag : &NBT::NamedTag = vs[0];
+            let sub_tag : &NBT::NamedTag = vs.get(0);
             assert!(sub_tag.get_name() == "test");
             match *sub_tag.get_tag() {
                 NBT::ByteTag(v) => { assert!(v == 1); }
@@ -32,7 +32,7 @@ fn test_short() {
     match *root.get_tag() {
         NBT::CompoundTag(ref vs) => {
             assert!(vs.len() == 1);
-            let sub_tag : &NBT::NamedTag = vs[0];
+            let sub_tag : &NBT::NamedTag = vs.get(0);
             assert!(sub_tag.get_name() == "hello");
             match *sub_tag.get_tag() {
                 NBT::ShortTag(v) => { assert!(v == 4660); }
@@ -53,7 +53,7 @@ fn test_int() {
     match *root.get_tag() {
         NBT::CompoundTag(ref vs) => {
             assert!(vs.len() == 1);
-            let sub_tag : &NBT::NamedTag = vs[0];
+            let sub_tag : &NBT::NamedTag = vs.get(0);
             assert!(sub_tag.get_name() == "world");
             match *sub_tag.get_tag() {
                 NBT::IntTag(v) => { assert!(v == 305419896); }
@@ -75,7 +75,7 @@ fn test_long() {
     match *root.get_tag() {
         NBT::CompoundTag(ref vs) => {
             assert!(vs.len() == 1);
-            let sub_tag : &NBT::NamedTag = vs[0];
+            let sub_tag : &NBT::NamedTag = vs.get(0);
             assert!(sub_tag.get_name() == "world");
             match *sub_tag.get_tag() {
                 NBT::LongTag(v) => { assert!(v == 1311768465173141112); }
@@ -96,7 +96,7 @@ fn test_bytearray() {
     match *root.get_tag() {
         NBT::CompoundTag(ref vs) => {
             assert!(vs.len() == 1);
-            let sub_tag : &NBT::NamedTag = vs[0];
+            let sub_tag : &NBT::NamedTag = vs.get(0);
             assert!(sub_tag.get_name() == "world");
             match *sub_tag.get_tag() {
                 NBT::ByteArrayTag(ref v) => { assert!(*v == ~[0,1,2,3,4,5,6,7,8,9]); }
@@ -113,11 +113,13 @@ fn test_string() {
     let bytes = ~std::io::MemReader::new(data.into_bytes());
     let mut parser = NBT::Parser::new(bytes as ~Reader);
     let root: ~NBT::NamedTag = parser.parse();
+    println!("pasred!");
     assert!(root.get_name() == "abcd");
     match *root.get_tag() {
         NBT::CompoundTag(ref vs) => {
             assert!(vs.len() == 1);
-            let sub_tag : &NBT::NamedTag = vs[0];
+            let sub_tag : &NBT::NamedTag = vs.get(0);
+            println!("Have subtag!");
             assert!(sub_tag.get_name() == "world");
             match *sub_tag.get_tag() {
                 NBT::StringTag(ref v) => { assert!(*v == ~"hello world!"); }
@@ -136,7 +138,7 @@ fn test_e_dat() {
 
     let mut parser = NBT::Parser::new(~level as ~Reader);
     let root: ~NBT::NamedTag = parser.parse();
-    assert!(root.get_type() == NBT::TAG_Compound);
+    assert!(root.get_type() == NBT::TAGCompound);
     //let n: &u8 = iter.next().unwrap();
     //println(format!("byte 1 is {}\n", n.to_str()));
 
@@ -153,7 +155,7 @@ fn test_print_e_data() {
 
     let mut parser = NBT::Parser::new(~level as ~Reader);
     let root: ~NBT::NamedTag = parser.parse();
-    assert!(root.get_type() == NBT::TAG_Compound);
+    assert!(root.get_type() == NBT::TAGCompound);
     let s = root.pretty_print();
 
     // if  you actually want to see the pretty-printed tree, set the NBT_PRETTYPRINT envvar
