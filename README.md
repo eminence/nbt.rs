@@ -1,4 +1,4 @@
 nbt.rs
 ======
 
-NBT Parser for Rust
+Use this instead:  https://github.com/overviewer/nbtrs
